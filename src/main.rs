@@ -3,6 +3,7 @@ extern crate rumble;
 mod lib;
 
 use lib::filter_tilts;
+use lib::tilt_uuids;
 use rumble::api::{Central, Peripheral};
 use rumble::bluez::adapter::ConnectedAdapter;
 use rumble::bluez::manager::Manager;
@@ -31,7 +32,7 @@ fn scan_tilt() -> Result<Option<Vec<u8>>, rumble::Error> {
         thread::sleep(Duration::from_secs(1));
         for c in adapter.peripherals().into_iter() {
             let d = c.properties().manufacturer_data;
-            match filter_tilts(&d) {
+            match filter_tilts(&d, tilt_uuids()) {
                 Some(t) => println!("{:#?}", t),
                 _ => (),
             }
@@ -40,7 +41,7 @@ fn scan_tilt() -> Result<Option<Vec<u8>>, rumble::Error> {
 }
 
 pub fn main() -> Result<(), rumble::Error> {
-    println!("{:?}", scan_tilt()?);
+    scan_tilt()?;
 
     Ok(())
 }
