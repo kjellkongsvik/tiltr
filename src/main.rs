@@ -35,7 +35,6 @@ fn scan_tilt(adapter: &ConnectedAdapter) -> Vec<Tilt> {
             .filter_map(|p| p.properties().manufacturer_data)
             .filter_map(|d| filter_tilts(&d, tilt_uuids()))
             .collect();
-        println!("X: {:?}", tilts);
         if tilts.len() > 0 {
             return tilts;
         };

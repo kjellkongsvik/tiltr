@@ -26,7 +26,6 @@ fn from(item: &Vec<u8>) -> Option<Tilt> {
 }
 
 pub fn filter_tilts(data: &Vec<u8>, tilt_uuids: HashMap<Uuid, String>) -> Option<Tilt> {
-    println!("d: {:?}",data);
     let t = from(data)?;
     match tilt_uuids.contains_key(&t.uuid) {
         true => Some(t),
