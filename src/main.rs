@@ -4,6 +4,7 @@ mod lib;
 
 use lib::filter_tilts;
 use lib::tilt_uuids;
+use lib::Tilt;
 use rumble::api::{Central, Peripheral};
 use rumble::bluez::adapter::ConnectedAdapter;
 use rumble::bluez::manager::Manager;
@@ -25,23 +26,24 @@ fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     adapter.connect()
 }
 
-fn scan_tilt() -> Result<Option<Vec<u8>>, rumble::Error> {
-    let adapter = connect_adapter(0)?;
-    adapter.start_scan()?;
-    'outer: loop {
+fn scan_tilt(adapter: &ConnectedAdapter) -> Vec<Tilt> {
+    for _ in 0..20 {
         thread::sleep(Duration::from_secs(1));
-        for c in adapter.peripherals().into_iter() {
-            let d = c.properties().manufacturer_data;
-            match filter_tilts(&d, tilt_uuids()) {
-                Some(t) => println!("{:#?}", t),
-                _ => (),
-            }
-        }
+        let tilts: Vec<Tilt> = adapter
+            .peripherals()
+            .into_iter()
+            .filter_map(|p| p.properties().manufacturer_data)
+            .filter_map(|d| filter_tilts(&d, tilt_uuids()))
+            .collect();
+        if tilts.len() > 0 {
+            return tilts;
+        };
     }
+    vec![]
 }
 
-pub fn main() -> Result<(), rumble::Error> {
-    scan_tilt()?;
-
-    Ok(())
+pub fn main() {
+    let adapter = connect_adapter(0).unwrap();
+    adapter.start_scan().unwrap();
+    println!("{:?}", scan_tilt(&adapter));
 }
