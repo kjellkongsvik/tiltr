@@ -11,15 +11,8 @@ pub struct Tilt {
     pub sg: f32,
 }
 
-fn to_array(i: &Vec<u8>) -> Option<[u8; 25]> {
-    (i[..]).try_into().ok()
-}
-
-fn from(item: &Option<Vec<u8>>) -> Option<Tilt> {
-    let arr = match item {
-        Some(x) => to_array(&x)?,
-        None => return None,
-    };
+fn from(item: &Vec<u8>) -> Option<Tilt> {
+    let arr: [u8; 25] = (&item[..]).try_into().ok()?;
     let u = Uuid::from_bytes(&arr[4..20]).ok()?;
     let mut rdr = Cursor::new(&arr[20..24]);
     let t: f32 = rdr.read_u16::<BigEndian>().ok()?.try_into().ok()?;
@@ -32,22 +25,20 @@ fn from(item: &Option<Vec<u8>>) -> Option<Tilt> {
     })
 }
 
-pub fn filter_tilts(
-    data: &Option<std::vec::Vec<u8>>,
-    tilt_uuids: HashMap<String, Uuid>,
-) -> Option<Tilt> {
+pub fn filter_tilts(data: &Vec<u8>, tilt_uuids: HashMap<Uuid, String>) -> Option<Tilt> {
+    println!("d: {:?}",data);
     let t = from(data)?;
-    match tilt_uuids.values().any(|x| x == &t.uuid) {
+    match tilt_uuids.contains_key(&t.uuid) {
         true => Some(t),
         _ => None,
     }
 }
 
-pub fn tilt_uuids() -> HashMap<String, Uuid> {
+pub fn tilt_uuids() -> HashMap<Uuid, String> {
     let mut uuids = HashMap::new();
     uuids.insert(
-        "pink".to_string(),
         "A495BB80C5B14B44B5121370F02D74DE".parse().unwrap(),
+        "pink".to_string(),
     );
     uuids
 }
@@ -58,19 +49,16 @@ mod tests {
 
     #[test]
     fn test_into_tilt() {
-        let pink_bytes: Option<Vec<u8>> = Some(vec![
+        let pink_bytes: Vec<u8> = vec![
             76, 0, 2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
             222, 0, 67, 4, 4, 34,
-        ]);
-        let other_bytes: Option<Vec<u8>> = Some(vec![
+        ];
+        let other_bytes: Vec<u8> = vec![
             76, 0, 2, 21, 164, 159, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
             222, 0, 67, 4, 4, 34,
-        ]);
+        ];
 
-        assert_eq!(
-            &filter_tilts(&pink_bytes, tilt_uuids()).unwrap().uuid,
-            tilt_uuids().get("pink").unwrap()
-        );
+        assert!(&filter_tilts(&pink_bytes, tilt_uuids()).is_some());
         assert!(filter_tilts(&other_bytes, tilt_uuids()).is_none());
     }
 }
