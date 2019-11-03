@@ -18,6 +18,7 @@ pub enum TiltError {
     Length,
     Read,
     Endian,
+    Post,
 }
 
 impl TryFrom<&Vec<u8>> for Tilt {
