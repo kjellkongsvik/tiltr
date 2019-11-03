@@ -1,9 +1,9 @@
 use reqwest::{Client, Response, Result};
 use serde_json;
 
-pub fn post(url: &str, js: &serde_json::Value) -> Result<Response> {
+pub fn post(url: &reqwest::Url, js: &serde_json::Value) -> Result<Response> {
     let client = Client::new();
-    client.post(url).json(js).send()
+    client.post(url.clone()).json(js).send()
 }
 
 #[cfg(test)]
@@ -17,7 +17,7 @@ mod tests {
     fn test_post() {
         let host = &mockito::server_url();
 
-        let url = format!("{}/", host);
+        let url = reqwest::Url::parse(host).unwrap();
         let js = json!({"hello":"world"});
 
         let mock = mock("POST", "/")
