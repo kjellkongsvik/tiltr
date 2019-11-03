@@ -3,7 +3,7 @@ extern crate rumble;
 mod brewfather;
 mod lib;
 
-use clap::{App, Arg};
+use clap::{value_t, App, Arg, ArgMatches};
 use lib::tilt_uuids;
 use lib::{Tilt, TiltError};
 use rumble::api::{Central, Peripheral};
@@ -29,7 +29,7 @@ fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     adapter.connect()
 }
 
-fn scan_tilt(adapter: &ConnectedAdapter, timeout: i32) -> Result<Tilt, TiltError> {
+fn scan_tilt(adapter: &ConnectedAdapter, timeout: u32) -> Result<Tilt, TiltError> {
     let uuids = tilt_uuids();
     for _ in 0..timeout {
         thread::sleep(Duration::from_secs(1));
@@ -47,11 +47,23 @@ fn scan_tilt(adapter: &ConnectedAdapter, timeout: i32) -> Result<Tilt, TiltError
     Err(TiltError::NoTiltResponse)
 }
 
+fn url_from(args: &ArgMatches) -> Option<reqwest::Url> {
+    match value_t!(args.value_of("url"), reqwest::Url) {
+        Ok(uuu) => Some(uuu),
+        Err(clap::Error {
+            kind: clap::ErrorKind::ArgumentNotFound,
+            ..
+        }) => None,
+        Err(e) => e.exit(),
+    }
+}
+
 pub fn main() -> Result<(), TiltError> {
     let args = App::new("Tilt logger")
         .arg(
             Arg::with_name("url")
-                .help("if set posts there")
+                .short("u")
+                .help("where to post")
                 .value_name("BREWFATHER_URL")
                 .required(false),
         )
@@ -61,24 +73,23 @@ pub fn main() -> Result<(), TiltError> {
                 .long("timeout")
                 .help("Number of seconds to wait for a tilt")
                 .value_name("TIMEOUT_SECONDS")
-                .required(false),
+                .default_value("10"),
         )
         .get_matches();
 
-    let url = args.value_of("url").unwrap_or("");
-    let timeout: i32 = args.value_of("timeout").unwrap_or("10").parse().unwrap();
+    let timeout: u32 = value_t!(args.value_of("timeout"), u32).unwrap_or_else(|e| e.exit());
 
     let adapter = connect_adapter(0).unwrap();
     adapter.start_scan().unwrap();
     let mut ts = scan_tilt(&adapter, timeout)?;
     ts.name = "pink".to_string();
     println!("{:?}", json!(&ts));
-
-    if !url.is_empty() {
-        match brewfather::post(url, &json!(&ts)) {
+    adapter.stop_scan().unwrap();
+    if let Some(url) = url_from(&args) {
+        match brewfather::post(&url, &json!(&ts)) {
             Ok(r) => println!("{:?}", r),
             Err(e) => println!("{:?}", e),
-        };
+        }
     }
     Ok(())
 }
