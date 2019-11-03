@@ -85,10 +85,14 @@ pub fn main() -> Result<(), TiltError> {
     ts.name = "pink".to_string();
     println!("{:?}", json!(&ts));
     adapter.stop_scan().unwrap();
+
     if let Some(url) = url_from(&args) {
         match brewfather::post(&url, &json!(&ts)) {
             Ok(r) => println!("{:?}", r),
-            Err(e) => println!("{:?}", e),
+            Err(e) => {
+                println!("{:?}", e);
+                return Err(TiltError::Post);
+            }
         }
     }
     Ok(())
