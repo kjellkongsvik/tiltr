@@ -30,7 +30,7 @@ fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
 }
 
 fn scan_tilt(adapter: &ConnectedAdapter, timeout: u32) -> Result<Tilt, TiltError> {
-    let uuids = tilt_uuids();
+    let my_tilts = tilt_uuids();
     for _ in 0..timeout {
         thread::sleep(Duration::from_secs(1));
         let tilts: Vec<Tilt> = adapter
@@ -38,7 +38,7 @@ fn scan_tilt(adapter: &ConnectedAdapter, timeout: u32) -> Result<Tilt, TiltError
             .into_iter()
             .filter_map(|p| p.properties().manufacturer_data)
             .filter_map(|data| Tilt::try_from(&data).ok())
-            .filter(|tilt| uuids.values().any(|u| u == &tilt.name))
+            .filter(|tilt| my_tilts.values().any(|u| u == &tilt.name))
             .collect();
         if let Some(t) = tilts.first() {
             return Ok(t.clone());
@@ -85,10 +85,14 @@ pub fn main() -> Result<(), TiltError> {
     ts.name = "pink".to_string();
     println!("{:?}", json!(&ts));
     adapter.stop_scan().unwrap();
+
     if let Some(url) = url_from(&args) {
         match brewfather::post(&url, &json!(&ts)) {
             Ok(r) => println!("{:?}", r),
-            Err(e) => println!("{:?}", e),
+            Err(e) => {
+                println!("{:?}", e);
+                return Err(TiltError::Post);
+            }
         }
     }
     Ok(())
