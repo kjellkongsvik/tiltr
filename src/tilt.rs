@@ -14,10 +14,19 @@ pub struct Tilt {
 
 #[derive(Debug)]
 pub enum TiltError {
-    NoTiltResponse,
     Length,
     Read,
     Endian,
+    Uuid,
+}
+
+fn tilt_uuids() -> HashMap<Uuid, String> {
+    let mut t = HashMap::new();
+    t.insert(
+        "A495BB80C5B14B44B5121370F02D74DE".parse().unwrap(),
+        "pink".to_owned(),
+    );
+    t
 }
 
 impl TryFrom<&Vec<u8>> for Tilt {
@@ -26,6 +35,10 @@ impl TryFrom<&Vec<u8>> for Tilt {
     fn try_from(v: &Vec<u8>) -> Result<Self, Self::Error> {
         let arr: [u8; 25] = (&v[..]).try_into().map_err(|_| TiltError::Length)?;
         let u = Uuid::from_bytes((&v[4..20]).try_into().map_err(|_| TiltError::Length)?);
+        let name = match tilt_uuids().get(&u) {
+            Some(a) => a.to_owned(),
+            None => return Err(TiltError::Uuid),
+        };
         let mut rdr = Cursor::new(&arr[20..24]);
         let temp: f32 = rdr
             .read_u16::<BigEndian>()
@@ -37,20 +50,13 @@ impl TryFrom<&Vec<u8>> for Tilt {
             .map_err(|_| TiltError::Read)?
             .try_into()
             .map_err(|_| TiltError::Endian)?;
-        let uu = format!("{:?}", u);
+
         Ok(Tilt {
-            name: uu,
+            name: name,
             gravity: gravity / 1000.0,
             temp: (temp - 32.0) / 1.8,
         })
     }
-}
-
-pub fn tilt_uuids() -> HashMap<String, String> {
-    let mut uuids = HashMap::new();
-    let u: Uuid = "A495BB80C5B14B44B5121370F02D74DE".parse().unwrap();
-    uuids.insert("pink".to_string(), format!("{:?}", u));
-    uuids
 }
 
 #[cfg(test)]
