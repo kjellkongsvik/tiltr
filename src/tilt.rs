@@ -1,11 +1,9 @@
-use byteorder::{BigEndian, ReadBytesExt};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::io::Cursor;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize)]
 pub struct Tilt {
     pub name: String,
     pub gravity: f32,
@@ -13,11 +11,10 @@ pub struct Tilt {
 }
 
 #[derive(Debug)]
-pub enum TiltError {
-    Length,
-    Read,
-    Endian,
-    Uuid,
+pub struct TiltError;
+
+pub fn t_data(m: &Vec<u8>) -> Result<[u8; 25], std::array::TryFromSliceError> {
+    m[..].try_into()
 }
 
 fn tilt_uuids() -> HashMap<Uuid, String> {
@@ -29,32 +26,21 @@ fn tilt_uuids() -> HashMap<Uuid, String> {
     t
 }
 
-impl TryFrom<&Vec<u8>> for Tilt {
+fn tilt_name(data: &[u8]) -> Result<String, TiltError> {
+    let uuid = Uuid::from_bytes(data.try_into().expect("len: 16"));
+    let name = tilt_uuids().get(&uuid).ok_or(TiltError)?.to_owned();
+    Ok(name)
+}
+
+impl TryFrom<&[u8; 25]> for Tilt {
     type Error = TiltError;
 
-    fn try_from(v: &Vec<u8>) -> Result<Self, Self::Error> {
-        let arr: [u8; 25] = (&v[..]).try_into().map_err(|_| TiltError::Length)?;
-        let u = Uuid::from_bytes((&v[4..20]).try_into().map_err(|_| TiltError::Length)?);
-        let name = match tilt_uuids().get(&u) {
-            Some(a) => a.to_owned(),
-            None => return Err(TiltError::Uuid),
-        };
-        let mut rdr = Cursor::new(&arr[20..24]);
-        let temp: f32 = rdr
-            .read_u16::<BigEndian>()
-            .map_err(|_| TiltError::Read)?
-            .try_into()
-            .map_err(|_| TiltError::Endian)?;
-        let gravity: f32 = rdr
-            .read_u16::<BigEndian>()
-            .map_err(|_| TiltError::Read)?
-            .try_into()
-            .map_err(|_| TiltError::Endian)?;
-
+    fn try_from(data: &[u8; 25]) -> Result<Self, Self::Error> {
+        let read = |data: &[u8]| u16::from_be_bytes(data.try_into().expect("len: 2")) as f32;
         Ok(Tilt {
-            name: name,
-            gravity: gravity / 1000.0,
-            temp: (temp - 32.0) / 1.8,
+            name: tilt_name(&data[4..20])?,
+            temp: (read(&data[20..22]) - 32.0) / 1.8,
+            gravity: read(&data[22..24]) / 1000.0,
         })
     }
 }
@@ -63,14 +49,23 @@ impl TryFrom<&Vec<u8>> for Tilt {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_into_tilt() -> Result<(), TiltError> {
-        let pink_bytes: [u8; 25] = [
+    fn pink_bytes() -> [u8; 25] {
+        [
             76, 0, 2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
             222, 0, 67, 4, 4, 34,
-        ];
-        assert!(Tilt::try_from(&pink_bytes.to_vec()).is_ok());
-        assert!(Tilt::try_from(&pink_bytes[..=23].to_vec()).is_err());
-        Ok(())
+        ]
+    }
+
+    #[test]
+    fn into_tilt() {
+        assert!(Tilt::try_from(&pink_bytes()).is_ok());
+    }
+
+    #[test]
+    fn values() {
+        let tilt = Tilt::try_from(&pink_bytes()).unwrap();
+        assert_eq!(tilt.name, "pink");
+        assert_eq!(tilt.gravity, 1.028);
+        assert!(f32::abs(tilt.temp - 19.4) < 0.1);
     }
 }

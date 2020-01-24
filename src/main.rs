@@ -1,4 +1,3 @@
-extern crate rand;
 extern crate rumble;
 
 use clap::{value_t, App, Arg};
@@ -10,7 +9,7 @@ use rumble::bluez::manager::Manager;
 use std::convert::TryFrom;
 use std::thread;
 use std::time::Duration;
-use tilt::Tilt;
+use tilt::{t_data, Tilt};
 
 fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     let manager = Manager::new()?;
@@ -37,6 +36,7 @@ fn scan_tilt(timeout: u32) -> Vec<Tilt> {
             .peripherals()
             .into_iter()
             .filter_map(|p| p.properties().manufacturer_data)
+            .filter_map(|v| t_data(&v).ok())
             .filter_map(|data| Tilt::try_from(&data).ok())
             .collect();
         return tilts;

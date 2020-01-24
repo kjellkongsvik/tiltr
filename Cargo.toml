@@ -6,15 +6,10 @@ edition = "2018"
 
 [dependencies]
 rumble = "0.3"
-rand = "0.7"
-byteorder = "1"
-mockito = "0.22"
 reqwest = {version= "0.10", features = ["json"]}
 serde = "1"
 uuid = { version = "0.8", features = ["v4", "serde"] }
 clap = "2"
-url = "2"
-futures-await-test = "0.3.0"
 tokio = { version = "0.2", features = ["full"] }
 
 
