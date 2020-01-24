@@ -56,7 +56,7 @@ async fn main() -> Result<(), reqwest::Error> {
         .arg(Arg::with_name("device").short("d").default_value("0"))
         .arg(Arg::with_name("url").short("u"))
         .arg(Arg::with_name("num").short("n").default_value("1"))
-        .arg(Arg::with_name("timeout").short("t").default_value("10"))
+        .arg(Arg::with_name("timeout").short("t").default_value("1"))
         .get_matches();
 
     let device = value_t!(args.value_of("device"), usize).unwrap_or_else(|e| e.exit());
