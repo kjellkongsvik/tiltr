@@ -1,5 +1,3 @@
-extern crate rumble;
-
 use clap::{value_t, App, Arg};
 use reqwest::Client;
 use rumble::api::{Central, Peripheral};
@@ -14,14 +12,14 @@ use tilt::{t_data, Tilt};
 fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     let manager = Manager::new()?;
 
-    let adapters = manager.adapters()?;
-    let mut adapter = match adapters.into_iter().nth(dev) {
-        Some(x) => x,
-        None => return Err(rumble::Error::DeviceNotFound),
-    };
+    let adapter = manager
+        .adapters()?
+        .into_iter()
+        .nth(dev)
+        .ok_or(rumble::Error::DeviceNotFound)?;
 
-    adapter = manager.down(&adapter)?;
-    adapter = manager.up(&adapter)?;
+    manager.down(&adapter)?;
+    manager.up(&adapter)?;
 
     adapter.connect()
 }
@@ -55,6 +53,7 @@ fn scan_tilt(timeout: u32, n: usize) -> Vec<Tilt> {
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let args = App::new("Tilt logger")
+        // TODO device#
         .arg(Arg::with_name("url").short("u"))
         .arg(Arg::with_name("num").short("n").default_value("1"))
         .arg(Arg::with_name("timeout").short("t").default_value("10"))
