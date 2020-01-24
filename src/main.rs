@@ -24,8 +24,8 @@ fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     adapter.connect()
 }
 
-fn scan_tilt(timeout: u32, n: usize) -> Vec<Tilt> {
-    let adapter = connect_adapter(0).expect("connecting adapter");
+fn scan_tilt(device: usize, timeout: usize, n: usize) -> Vec<Tilt> {
+    let adapter = connect_adapter(device).expect("connecting adapter");
     adapter.start_scan().expect("start scan");
 
     let mut found = HashMap::new();
@@ -53,16 +53,17 @@ fn scan_tilt(timeout: u32, n: usize) -> Vec<Tilt> {
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let args = App::new("Tilt logger")
-        // TODO device#
+        .arg(Arg::with_name("device").short("d").default_value("0"))
         .arg(Arg::with_name("url").short("u"))
         .arg(Arg::with_name("num").short("n").default_value("1"))
         .arg(Arg::with_name("timeout").short("t").default_value("10"))
         .get_matches();
 
-    let timeout = value_t!(args.value_of("timeout"), u32).unwrap_or_else(|e| e.exit());
+    let device = value_t!(args.value_of("device"), usize).unwrap_or_else(|e| e.exit());
+    let timeout = value_t!(args.value_of("timeout"), usize).unwrap_or_else(|e| e.exit());
     let num = value_t!(args.value_of("num"), usize).unwrap_or_else(|e| e.exit());
 
-    let tilts = scan_tilt(timeout, num);
+    let tilts = scan_tilt(device, timeout, num);
 
     println!("{:?}", &tilts);
 
