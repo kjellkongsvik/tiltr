@@ -2,10 +2,10 @@ extern crate rumble;
 
 use clap::{value_t, App, Arg};
 use reqwest::Client;
-use reqwest::Error;
 use rumble::api::{Central, Peripheral};
 use rumble::bluez::adapter::ConnectedAdapter;
 use rumble::bluez::manager::Manager;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::thread;
 use std::time::Duration;
@@ -26,35 +26,44 @@ fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     adapter.connect()
 }
 
-fn scan_tilt(timeout: u32) -> Vec<Tilt> {
+fn scan_tilt(timeout: u32, n: usize) -> Vec<Tilt> {
     let adapter = connect_adapter(0).expect("connecting adapter");
     adapter.start_scan().expect("start scan");
 
+    let mut found = HashMap::new();
+
     for _ in 0..timeout {
         thread::sleep(Duration::from_secs(1));
-        let tilts: Vec<Tilt> = adapter
+        adapter
             .peripherals()
             .into_iter()
             .filter_map(|p| p.properties().manufacturer_data)
             .filter_map(|v| t_data(&v).ok())
             .filter_map(|data| Tilt::try_from(&data).ok())
-            .collect();
-        return tilts;
+            .fold((), |_, v| {
+                found.entry(v.name.clone()).or_insert(v);
+            });
+        if found.len() == n {
+            break;
+        }
     }
 
     adapter.stop_scan().expect("stop scan");
-    Vec::new()
+    found.drain().map(|(_, v)| v).collect()
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<(), reqwest::Error> {
     let args = App::new("Tilt logger")
         .arg(Arg::with_name("url").short("u"))
+        .arg(Arg::with_name("num").short("n").default_value("1"))
         .arg(Arg::with_name("timeout").short("t").default_value("10"))
         .get_matches();
 
     let timeout = value_t!(args.value_of("timeout"), u32).unwrap_or_else(|e| e.exit());
-    let tilts = scan_tilt(timeout);
+    let num = value_t!(args.value_of("num"), usize).unwrap_or_else(|e| e.exit());
+
+    let tilts = scan_tilt(timeout, num);
 
     println!("{:?}", &tilts);
 

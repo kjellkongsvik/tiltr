@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Tilt {
     pub name: String,
     pub gravity: f32,
@@ -13,7 +13,7 @@ pub struct Tilt {
 #[derive(Debug)]
 pub struct TiltError;
 
-pub fn t_data(m: &Vec<u8>) -> Result<[u8; 25], std::array::TryFromSliceError> {
+pub fn t_data(m: &[u8]) -> Result<[u8; 25], std::array::TryFromSliceError> {
     m[..].try_into()
 }
 
