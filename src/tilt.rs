@@ -11,7 +11,7 @@ pub struct Tilt {
 }
 
 #[derive(Debug)]
-pub struct TiltError;
+pub struct NotATilt;
 
 fn tilt_uuids() -> HashMap<Uuid, String> {
     let mut t = HashMap::new();
@@ -22,14 +22,15 @@ fn tilt_uuids() -> HashMap<Uuid, String> {
     t
 }
 
-fn tilt_name(data: &[u8]) -> Result<String, TiltError> {
-    let uuid = Uuid::from_bytes(data.try_into().expect("len: 16"));
-    let name = tilt_uuids().get(&uuid).ok_or(TiltError)?.to_owned();
-    Ok(name)
+fn tilt_name(data: &[u8]) -> Result<String, NotATilt> {
+    Ok(tilt_uuids()
+        .get(&Uuid::from_bytes(data.try_into().expect("len: 16")))
+        .ok_or(NotATilt)?
+        .to_owned())
 }
 
 impl TryFrom<&[u8; 25]> for Tilt {
-    type Error = TiltError;
+    type Error = NotATilt;
 
     fn try_from(data: &[u8; 25]) -> Result<Self, Self::Error> {
         let read = |data: &[u8]| u16::from_be_bytes(data.try_into().expect("len: 2")) as f32;
