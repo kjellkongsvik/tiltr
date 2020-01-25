@@ -4,10 +4,10 @@ use rumble::api::{Central, Peripheral};
 use rumble::bluez::adapter::ConnectedAdapter;
 use rumble::bluez::manager::Manager;
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::thread;
 use std::time::Duration;
-use tilt::{t_data, Tilt};
+use tilt::Tilt;
 
 fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     let manager = Manager::new()?;
@@ -24,7 +24,7 @@ fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
     adapter.connect()
 }
 
-fn scan_tilt(device: usize, timeout: usize, n: usize) -> Vec<Tilt> {
+fn scan_tilt(device: usize, timeout: usize, count: usize) -> Vec<Tilt> {
     let adapter = connect_adapter(device).expect("connecting adapter");
     adapter.start_scan().expect("start scan");
 
@@ -36,12 +36,12 @@ fn scan_tilt(device: usize, timeout: usize, n: usize) -> Vec<Tilt> {
             .peripherals()
             .into_iter()
             .filter_map(|p| p.properties().manufacturer_data)
-            .filter_map(|v| t_data(&v).ok())
-            .filter_map(|data| Tilt::try_from(&data).ok())
-            .fold((), |_, v| {
-                found.entry(v.name.clone()).or_insert(v);
+            .filter_map(|v| v[..].try_into().ok())
+            .filter_map(|d| Tilt::try_from(&d).ok())
+            .fold((), |_, t| {
+                found.entry(t.name.clone()).or_insert(t);
             });
-        if found.len() == n {
+        if found.len() == count {
             break;
         }
     }
@@ -53,17 +53,17 @@ fn scan_tilt(device: usize, timeout: usize, n: usize) -> Vec<Tilt> {
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     let args = App::new("Tilt logger")
-        .arg(Arg::with_name("device").short("d").default_value("0"))
+        .arg(Arg::with_name("count").short("c").default_value("1"))
         .arg(Arg::with_name("url").short("u"))
-        .arg(Arg::with_name("num").short("n").default_value("1"))
+        .arg(Arg::with_name("device").short("d").default_value("0"))
         .arg(Arg::with_name("timeout").short("t").default_value("1"))
         .get_matches();
 
     let device = value_t!(args.value_of("device"), usize).unwrap_or_else(|e| e.exit());
     let timeout = value_t!(args.value_of("timeout"), usize).unwrap_or_else(|e| e.exit());
-    let num = value_t!(args.value_of("num"), usize).unwrap_or_else(|e| e.exit());
+    let count = value_t!(args.value_of("count"), usize).unwrap_or_else(|e| e.exit());
 
-    let tilts = scan_tilt(device, timeout, num);
+    let tilts = scan_tilt(device, timeout, count);
 
     println!("{:?}", &tilts);
 

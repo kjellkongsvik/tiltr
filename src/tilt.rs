@@ -13,11 +13,6 @@ pub struct Tilt {
 #[derive(Debug)]
 pub struct TiltError;
 
-// TODO TryFrom trait
-pub fn t_data(m: &[u8]) -> Result<[u8; 25], std::array::TryFromSliceError> {
-    m[..].try_into()
-}
-
 fn tilt_uuids() -> HashMap<Uuid, String> {
     let mut t = HashMap::new();
     t.insert(
