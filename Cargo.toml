@@ -6,11 +6,9 @@ edition = "2018"
 
 [dependencies]
 rumble = "0.3"
-reqwest = {version= "0.10", features = ["json"]}
 serde = "1"
 uuid = { version = "0.8", features = ["v4", "serde"] }
 clap = "2"
-tokio = { version = "0.2", features = ["full"] }
 
 
 [lib]
