@@ -13,17 +13,30 @@ pub struct Tilt {
 #[derive(Debug)]
 pub struct NotATilt;
 
-fn tilt_uuids() -> HashMap<Uuid, String> {
-    let mut t = HashMap::new();
-    t.insert(
-        "A495BB80C5B14B44B5121370F02D74DE".parse().unwrap(),
-        "pink".to_owned(),
-    );
-    t
+fn tilt_list() -> String {
+    "a495bb10c5b14b44b5121370f02d74de,Red
+a495bb20c5b14b44b5121370f02d74de,Green
+a495bb30c5b14b44b5121370f02d74de,Black
+a495bb40c5b14b44b5121370f02d74de,Purple
+a495bb50c5b14b44b5121370f02d74de,Orange
+a495bb60c5b14b44b5121370f02d74de,Blue
+a495bb70c5b14b44b5121370f02d74de,Yellow
+a495bb80c5b14b44b5121370f02d74de,Pink"
+        .to_string()
+}
+
+fn tilt_uuids(s: &str) -> HashMap<Uuid, String> {
+    s.lines()
+        .map(|l| l.split(','))
+        .fold(HashMap::new(), |mut hm, mut l| {
+            hm.entry(l.next().unwrap().parse().unwrap())
+                .or_insert_with(|| l.next().unwrap().to_string());
+            hm
+        })
 }
 
 fn tilt_name(data: &[u8]) -> Result<String, NotATilt> {
-    Ok(tilt_uuids()
+    Ok(tilt_uuids(&tilt_list())
         .get(&Uuid::from_bytes(data.try_into().expect("len: 16")))
         .ok_or(NotATilt)?
         .to_owned())
@@ -61,7 +74,7 @@ mod tests {
     #[test]
     fn values() {
         let tilt = Tilt::try_from(&pink_bytes()).unwrap();
-        assert_eq!(tilt.name, "pink");
+        assert_eq!(tilt.name, "Pink");
         assert_eq!(tilt.gravity, 1.028);
         assert!(f32::abs(tilt.temp - 19.4) < 0.1);
     }

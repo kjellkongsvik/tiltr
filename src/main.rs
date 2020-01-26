@@ -32,7 +32,7 @@ fn scan_tilt(adapter: &ConnectedAdapter, timeout: usize) -> Option<Tilt> {
             .filter_map(|v| v[..].try_into().ok())
             .filter_map(|d| Tilt::try_from(&d).ok())
             .next();
-        if let Some(_) = found {
+        if found.is_some() {
             return found;
         }
     }
