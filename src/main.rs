@@ -41,18 +41,21 @@ fn scan_tilt(adapter: &ConnectedAdapter, timeout: usize) -> Option<Tilt> {
 
 fn main() -> Result<(), rumble::Error> {
     let args = App::new("Tilt logger")
+        .arg(Arg::with_name("calibrate_sg").short("c").default_value("0"))
         .arg(Arg::with_name("device").short("d").default_value("0"))
         .arg(Arg::with_name("timeout").short("t").default_value("1"))
         .get_matches();
 
     let device = value_t!(args.value_of("device"), usize).unwrap_or_else(|e| e.exit());
     let timeout = value_t!(args.value_of("timeout"), usize).unwrap_or_else(|e| e.exit());
+    let calibrate = value_t!(args.value_of("calibrate_sg"), f32).unwrap_or_else(|e| e.exit());
 
     let adapter = connect_adapter(device)?;
     adapter.start_scan()?;
 
-    if let Some(t) = scan_tilt(&adapter, timeout) {
-        println!("{}", &t);
+    if let Some(mut t) = scan_tilt(&adapter, timeout) {
+        t.gravity += calibrate;
+        println!("{}", serde_json::to_string(&t).unwrap());
     }
 
     adapter.stop_scan()?;

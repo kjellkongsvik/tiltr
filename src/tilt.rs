@@ -1,20 +1,13 @@
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::fmt;
 use uuid::Uuid;
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize)]
 pub struct Tilt {
     pub name: String,
     pub gravity: f32,
     pub temp: f32,
-}
-
-impl fmt::Display for &Tilt {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: SG: {}, T: {}C", self.name, self.gravity, self.temp)
-    }
 }
 
 #[derive(Debug)]
