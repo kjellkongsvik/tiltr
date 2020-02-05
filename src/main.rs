@@ -1,20 +1,20 @@
+use btleplug::api::{Central, Peripheral};
+use btleplug::bluez::adapter::ConnectedAdapter;
+use btleplug::bluez::manager::Manager;
 use clap::{value_t, App, Arg};
-use rumble::api::{Central, Peripheral};
-use rumble::bluez::adapter::ConnectedAdapter;
-use rumble::bluez::manager::Manager;
 use std::convert::{TryFrom, TryInto};
 use std::thread;
 use std::time::Duration;
 use tilt::Tilt;
 
-fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, rumble::Error> {
+fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, btleplug::Error> {
     let manager = Manager::new()?;
 
     let adapter = manager
         .adapters()?
         .into_iter()
         .nth(dev)
-        .ok_or(rumble::Error::DeviceNotFound)?;
+        .ok_or(btleplug::Error::DeviceNotFound)?;
 
     manager.down(&adapter)?;
     manager.up(&adapter)?;
@@ -39,7 +39,7 @@ fn scan_tilt(adapter: &ConnectedAdapter, timeout: usize) -> Option<Tilt> {
     None
 }
 
-fn main() -> Result<(), rumble::Error> {
+fn main() -> Result<(), btleplug::Error> {
     let args = App::new("Tilt logger")
         .arg(Arg::with_name("calibrate_sg").short("c").default_value("0"))
         .arg(Arg::with_name("device").short("d").default_value("0"))
