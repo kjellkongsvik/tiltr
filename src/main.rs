@@ -5,7 +5,9 @@ use clap::{value_t, App, Arg};
 use std::convert::{TryFrom, TryInto};
 use std::thread;
 use std::time::Duration;
-use tilt::Tilt;
+
+mod tilt;
+use crate::tilt::Tilt;
 
 fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, btleplug::Error> {
     let manager = Manager::new()?;
