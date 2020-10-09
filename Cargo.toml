@@ -5,9 +5,10 @@ authors = ["Kjell W. Kongsvik <kjell.kongsvik@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-btleplug = "0.5"
+btleplug = { git = "https://github.com/kjellkongsvik/btleplug" }
 serde = "1"
 serde_json = "1"
 uuid = { version = "0.8", features = ["v4", "serde"] }
 clap = "2"
+anyhow = "1"
 
