@@ -9,17 +9,14 @@ use std::time::Duration;
 mod tilt;
 use crate::tilt::Tilt;
 
-fn connect_adapter(dev: usize) -> Result<ConnectedAdapter, btleplug::Error> {
+fn connect_adapter() -> Result<ConnectedAdapter, btleplug::Error> {
     let manager = Manager::new()?;
 
     let adapter = manager
         .adapters()?
         .into_iter()
-        .nth(dev)
+        .next()
         .ok_or(btleplug::Error::DeviceNotFound)?;
-
-    manager.down(&adapter)?;
-    manager.up(&adapter)?;
 
     adapter.connect()
 }
@@ -44,15 +41,13 @@ fn scan_tilt(adapter: &ConnectedAdapter, timeout: usize) -> Option<Tilt> {
 fn main() -> Result<(), btleplug::Error> {
     let args = App::new("Tilt logger")
         .arg(Arg::with_name("calibrate_sg").short("c").default_value("0"))
-        .arg(Arg::with_name("device").short("d").default_value("0"))
         .arg(Arg::with_name("timeout").short("t").default_value("1"))
         .get_matches();
 
-    let device = value_t!(args.value_of("device"), usize).unwrap_or_else(|e| e.exit());
     let timeout = value_t!(args.value_of("timeout"), usize).unwrap_or_else(|e| e.exit());
     let calibrate = value_t!(args.value_of("calibrate_sg"), f32).unwrap_or_else(|e| e.exit());
 
-    let adapter = connect_adapter(device)?;
+    let adapter = connect_adapter()?;
     adapter.start_scan()?;
 
     if let Some(mut t) = scan_tilt(&adapter, timeout) {
