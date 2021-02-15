@@ -29,8 +29,7 @@ fn scan_tilt(adapter: &ConnectedAdapter, timeout: usize) -> Option<Tilt> {
             .into_iter()
             .filter_map(|p| p.properties().manufacturer_data)
             .filter_map(|v| v[..].try_into().ok())
-            .filter_map(|d| Tilt::try_from(&d).ok())
-            .next();
+            .find_map(|d| Tilt::try_from(&d).ok());
         if found.is_some() {
             return found;
         }
