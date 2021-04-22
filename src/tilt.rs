@@ -34,7 +34,6 @@ fn tilt_uuids(s: &str) -> HashMap<Uuid, String> {
             hm
         })
 }
-
 fn tilt_name(data: &[u8]) -> Result<String, NotATilt> {
     Ok(tilt_uuids(&tilt_list())
         .get(&Uuid::from_bytes(data.try_into().expect("len: 16")))
@@ -42,15 +41,23 @@ fn tilt_name(data: &[u8]) -> Result<String, NotATilt> {
         .to_owned())
 }
 
-impl TryFrom<&[u8; 25]> for Tilt {
+fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, NotATilt> {
+    d.get(&0x4c).map(|v| v.to_owned()).ok_or(NotATilt)
+}
+
+impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
     type Error = NotATilt;
 
-    fn try_from(data: &[u8; 25]) -> Result<Self, Self::Error> {
+    fn try_from(data: &HashMap<u16, Vec<u8>>) -> Result<Self, Self::Error> {
+        let v = ibeacon(data)?;
+        if v.len() != 23 {
+            return Err(NotATilt);
+        }
         let read = |data: &[u8]| u16::from_be_bytes(data.try_into().expect("len: 2")) as f32;
         Ok(Tilt {
-            name: tilt_name(&data[4..20])?,
-            temp: (read(&data[20..22]) - 32.0) / 1.8,
-            gravity: read(&data[22..24]) / 1000.0,
+            name: tilt_name(&v[2..18])?,
+            temp: (read(&v[18..20]) - 32.0) / 1.8,
+            gravity: read(&v[20..22]) / 1000.0,
         })
     }
 }
@@ -59,23 +66,36 @@ impl TryFrom<&[u8; 25]> for Tilt {
 mod tests {
     use super::*;
 
-    fn pink_bytes() -> [u8; 25] {
-        [
-            76, 0, 2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
-            222, 0, 67, 4, 4, 34,
-        ]
+    fn pink() -> HashMap<u16, Vec<u8>> {
+        [(
+            0x4c,
+            vec![
+                2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116, 222,
+                0, 67, 4, 4, 34,
+            ],
+        )]
+        .iter()
+        .cloned()
+        .collect()
     }
 
     #[test]
     fn into_tilt() {
-        assert!(Tilt::try_from(&pink_bytes()).is_ok());
+        assert!(Tilt::try_from(&pink()).is_ok());
     }
 
     #[test]
     fn values() {
-        let tilt = Tilt::try_from(&pink_bytes()).unwrap();
+        let tilt = Tilt::try_from(&pink()).unwrap();
         assert_eq!(tilt.name, "Pink");
         assert_eq!(tilt.gravity, 1.028);
         assert!(f32::abs(tilt.temp - 19.4) < 0.1);
+    }
+
+    #[test]
+    fn id() {
+        let k: [u8; 2] = [76, 0];
+        let i = u16::from_be_bytes(k);
+        assert_eq!(i, 19456);
     }
 }
