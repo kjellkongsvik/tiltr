@@ -13,7 +13,7 @@ pub struct Tilt {
 #[derive(Debug)]
 pub struct NotATilt;
 
-fn tilt_list() -> String {
+fn tilt_uuids() -> HashMap<Uuid, String> {
     "a495bb10c5b14b44b5121370f02d74de,Red
 a495bb20c5b14b44b5121370f02d74de,Green
 a495bb30c5b14b44b5121370f02d74de,Black
@@ -22,11 +22,7 @@ a495bb50c5b14b44b5121370f02d74de,Orange
 a495bb60c5b14b44b5121370f02d74de,Blue
 a495bb70c5b14b44b5121370f02d74de,Yellow
 a495bb80c5b14b44b5121370f02d74de,Pink"
-        .to_string()
-}
-
-fn tilt_uuids(s: &str) -> HashMap<Uuid, String> {
-    s.lines()
+        .lines()
         .map(|l| l.split(','))
         .fold(HashMap::new(), |mut hm, mut l| {
             hm.entry(l.next().unwrap().parse().unwrap())
@@ -35,7 +31,7 @@ fn tilt_uuids(s: &str) -> HashMap<Uuid, String> {
         })
 }
 fn tilt_name(data: &[u8]) -> Result<String, NotATilt> {
-    Ok(tilt_uuids(&tilt_list())
+    Ok(tilt_uuids()
         .get(&Uuid::from_bytes(data.try_into().expect("len: 16")))
         .ok_or(NotATilt)?
         .to_owned())
@@ -66,36 +62,24 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
 mod tests {
     use super::*;
 
-    fn pink() -> HashMap<u16, Vec<u8>> {
-        [(
-            0x4c,
-            vec![
-                2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116, 222,
-                0, 67, 4, 4, 34,
-            ],
-        )]
-        .iter()
-        .cloned()
-        .collect()
-    }
-
-    #[test]
-    fn into_tilt() {
-        assert!(Tilt::try_from(&pink()).is_ok());
-    }
-
     #[test]
     fn values() {
-        let tilt = Tilt::try_from(&pink()).unwrap();
+        let tilt = Tilt::try_from(
+            &[(
+                0x4c,
+                vec![
+                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
+                    222, 0, 67, 4, 4, 34,
+                ],
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+        )
+        .unwrap();
+
         assert_eq!(tilt.name, "Pink");
         assert_eq!(tilt.gravity, 1.028);
         assert!(f32::abs(tilt.temp - 19.4) < 0.1);
-    }
-
-    #[test]
-    fn id() {
-        let k: [u8; 2] = [76, 0];
-        let i = u16::from_be_bytes(k);
-        assert_eq!(i, 19456);
     }
 }

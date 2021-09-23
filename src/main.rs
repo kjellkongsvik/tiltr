@@ -9,15 +9,13 @@ use std::time::Duration;
 mod tilt;
 
 async fn connect_adapter() -> Result<Adapter> {
-    let manager = Manager::new().await?;
-
-    let adapter = manager
+    Ok(Manager::new()
+        .await?
         .adapters()
         .await?
         .into_iter()
         .next()
-        .context("Blutooth adapter not found")?;
-    Ok(adapter)
+        .context("Blutooth adapter not found")?)
 }
 
 async fn scan_tilt(adapter: &Adapter, timeout: usize) -> Option<tilt::Tilt> {
@@ -40,8 +38,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .arg(Arg::with_name("timeout").short("t").default_value("1"))
         .get_matches();
 
-    let timeout = value_t!(args.value_of("timeout"), usize)?;
     let calibrate = value_t!(args.value_of("calibrate_sg"), f32)?;
+    let timeout = value_t!(args.value_of("timeout"), usize)?;
 
     let adapter = connect_adapter().await?;
     adapter.start_scan().await?;
