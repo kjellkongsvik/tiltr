@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use btleplug::api::{Central, Manager as _, Peripheral as _};
 use btleplug::platform::{Adapter, Manager};
 use clap::{value_t, App, Arg};
+use tilt::NotATilt;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::thread;
@@ -20,17 +21,15 @@ async fn connect_adapter() -> Result<Adapter> {
     Ok(adapter)
 }
 
-async fn scan_tilt(adapter: &Adapter, timeout: usize) -> Option<tilt::Tilt> {
+async fn scan_tilt(adapter: &Adapter, timeout: usize) -> Result<tilt::Tilt, NotATilt> {
     for _ in 0..timeout {
         thread::sleep(Duration::from_secs(1));
         for p in adapter.peripherals().await.unwrap() {
             let k = p.properties().await.unwrap().unwrap();
-            if let Ok(t) = tilt::Tilt::try_from(&k.manufacturer_data) {
-                return Some(t);
-            }
+            return tilt::Tilt::try_from(&k.manufacturer_data);
         }
     }
-    None
+    Err(NotATilt)
 }
 
 #[tokio::main]
@@ -46,7 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let adapter = connect_adapter().await?;
     adapter.start_scan().await?;
 
-    if let Some(mut t) = scan_tilt(&adapter, timeout).await {
+    if let Ok(mut t) = scan_tilt(&adapter, timeout).await {
         t.gravity += calibrate;
         println!("{}", serde_json::to_string(&t)?);
     }
