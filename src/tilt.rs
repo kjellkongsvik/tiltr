@@ -1,23 +1,62 @@
-use anyhow::Result;
 use bincode::Options;
+use btleplug::api::{Central, Manager as _, Peripheral as _};
+use btleplug::platform::Manager;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::thread;
+use std::time::Duration;
 use uuid::Uuid;
 
-#[derive(Serialize)]
-pub struct Tilt {
-    pub name: String,
-    pub gravity: f32,
-    pub temp: f32,
+pub async fn scan_tilt(calibrate: f32, timeout: usize) -> Result<String, Error> {
+    let adapter = Manager::new()
+        .await?
+        .adapters()
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(Error::MissingAdapter)?;
+
+    let mut s = "404".to_string();
+    for _ in 0..timeout {
+        thread::sleep(Duration::from_secs(1));
+        for p in adapter.peripherals().await? {
+            if let Some(k) = p.properties().await? {
+                if let Ok(mut t) = Tilt::try_from(&k.manufacturer_data) {
+                    t.gravity += calibrate;
+                    s = serde_json::to_string(&t).expect("All values should be ok");
+                }
+            }
+        }
+    }
+    adapter.stop_scan().await?;
+
+    Ok(s)
 }
 
-#[derive(Debug)]
-pub enum TiltErr {
+#[derive(Serialize)]
+struct Tilt {
+    name: String,
+    gravity: f32,
+    temp: f32,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Not an ibeacon device")]
     NotIbeacon,
+    #[error("Similar, just ducky")]
     ButDucky,
+    #[error("Not a tilt")]
     NotATilt,
+    #[error("Bad value")]
     BadValue,
+    #[error("BT")]
+    BT(#[from] btleplug::Error),
+    #[error("fd")]
+    Sss(#[from] serde_json::Error),
+    #[error("Missing adapter")]
+    MissingAdapter,
 }
 
 #[derive(Deserialize, PartialEq, Debug)]
@@ -31,7 +70,7 @@ struct RawTilt {
 }
 
 impl TryFrom<&HashMap<u16, Vec<u8>>> for RawTilt {
-    type Error = TiltErr;
+    type Error = Error;
 
     fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Self::Error> {
         bincode::DefaultOptions::new()
@@ -39,12 +78,12 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for RawTilt {
             .allow_trailing_bytes()
             .with_big_endian()
             .deserialize::<RawTilt>(&ibeacon(manufacturer_data)?[..])
-            .map_err(|_| TiltErr::NotATilt)
+            .map_err(|_| Error::NotATilt)
     }
 }
 
 impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
-    type Error = TiltErr;
+    type Error = Error;
 
     fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Self::Error> {
         let raw = RawTilt::try_from(manufacturer_data)?;
@@ -53,7 +92,7 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
         let gravity = (raw.minor as f32) / 1000.0;
 
         if !(0.0..100.0).contains(&temp) {
-            return Err(TiltErr::BadValue);
+            return Err(Error::BadValue);
         }
 
         Ok(Tilt {
@@ -81,15 +120,16 @@ a495bb80c5b14b44b5121370f02d74de,Pink"
             hm
         })
 }
-fn tilt_name(data: uuid::Bytes) -> Result<String, TiltErr> {
+
+fn tilt_name(data: uuid::Bytes) -> Result<String, Error> {
     Ok(tilt_uuids()
         .get(&Uuid::from_bytes(data))
-        .ok_or(TiltErr::ButDucky)?
+        .ok_or(Error::ButDucky)?
         .to_owned())
 }
 
-fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, TiltErr> {
-    d.get(&76).map(|v| v.to_owned()).ok_or(TiltErr::NotIbeacon)
+fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, Error> {
+    d.get(&76).map(|v| v.to_owned()).ok_or(Error::NotIbeacon)
 }
 
 #[cfg(test)]
