@@ -1,61 +1,78 @@
-use anyhow::{Context, Result};
-use btleplug::api::{Central, Peripheral};
-use btleplug::bluez::adapter::ConnectedAdapter;
-use btleplug::bluez::manager::Manager;
-use clap::{value_t, App, Arg};
-use std::convert::{TryFrom, TryInto};
-use std::thread;
-use std::time::Duration;
+use std::error::Error;
 mod tilt;
-use crate::tilt::Tilt;
+use btleplug::api::{Central, Manager as _, Peripheral as _};
+use btleplug::platform::{Adapter, Manager};
+use std::convert::TryFrom;
+use tilt::Tilt;
 
-fn connect_adapter() -> Result<ConnectedAdapter> {
-    let manager = Manager::new()?;
-
-    let adapter = manager
-        .adapters()?
-        .into_iter()
-        .next()
-        .context("Device not found")?;
-
-    Ok(adapter.connect()?)
-}
-
-fn scan_tilt(adapter: &ConnectedAdapter, timeout: usize) -> Option<Tilt> {
-    for _ in 0..timeout {
-        thread::sleep(Duration::from_secs(1));
-        let found = adapter
-            .peripherals()
-            .into_iter()
-            .filter_map(|p| p.properties().manufacturer_data)
-            .filter_map(|v| v[..].try_into().ok())
-            .filter_map(|d| Tilt::try_from(&d).ok())
-            .next();
-        if found.is_some() {
-            return found;
-        }
-    }
-    None
-}
-
-fn main() -> Result<()> {
-    let args = App::new("Tilt logger")
-        .arg(Arg::with_name("calibrate_sg").short("c").default_value("0"))
-        .arg(Arg::with_name("timeout").short("t").default_value("1"))
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let args = clap::App::new("tiltr")
+        .version(clap::crate_version!())
+        .arg(
+            clap::Arg::with_name("calibrate_g")
+                .short("c")
+                .default_value("0"),
+        )
+        .arg(
+            clap::Arg::with_name("timeout")
+                .short("t")
+                .default_value("1"),
+        )
         .get_matches();
 
-    let timeout = value_t!(args.value_of("timeout"), usize)?;
-    let calibrate = value_t!(args.value_of("calibrate_sg"), f32)?;
+    let calibrate_g = clap::value_t!(args.value_of("calibrate_g"), f32)?;
+    let timeout = clap::value_t!(args.value_of("timeout"), u64)?;
 
-    let adapter = connect_adapter()?;
-    adapter.start_scan()?;
-
-    if let Some(mut t) = scan_tilt(&adapter, timeout) {
-        t.gravity += calibrate;
-        println!("{}", serde_json::to_string(&t)?);
-    }
-
-    adapter.stop_scan()?;
+    println!("{}", scan_tilt(calibrate_g, timeout).await?);
 
     Ok(())
+}
+
+async fn search(adapter: &Adapter) -> Result<Tilt, TiltError> {
+    loop {
+        for p in adapter.peripherals().await? {
+            if let Some(k) = p.properties().await? {
+                if let Ok(tilt) = Tilt::try_from(&k.manufacturer_data) {
+                    return Ok(tilt);
+                }
+            }
+        }
+    }
+}
+
+async fn scan_tilt(calibrate_g: f32, timeout: u64) -> Result<String, TiltError> {
+    let adapter = Manager::new()
+        .await?
+        .adapters()
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(TiltError::MissingAdapter)?;
+    adapter.start_scan().await?;
+
+    let tilt = match tokio::time::timeout(
+        std::time::Duration::from_secs(timeout),
+        search(&adapter),
+    )
+    .await
+    {
+        Ok(Ok(mut t)) => {
+            t.gravity += calibrate_g;
+            Ok(serde_json::to_string(&t).unwrap())
+        }
+        _ => Err(TiltError::TiltNotFound),
+    };
+    adapter.stop_scan().await?;
+    tilt
+}
+
+#[derive(Debug, thiserror::Error)]
+enum TiltError {
+    #[error("Tilt not found")]
+    TiltNotFound,
+    #[error("BT")]
+    BT(#[from] btleplug::Error),
+    #[error("Missing adapter")]
+    MissingAdapter,
 }

@@ -1,19 +1,79 @@
-use serde::Serialize;
+use bincode::Options;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use uuid::Uuid;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct Tilt {
     pub name: String,
     pub gravity: f32,
     pub temp: f32,
 }
 
-#[derive(Debug)]
-pub struct NotATilt;
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Not an ibeacon device")]
+    NotIbeacon,
+    #[error("Not a tilt")]
+    NotATilt,
+    #[error("Unexpected temp value")]
+    UnexpectedTempValue,
+    #[error("Unexpected gravity value")]
+    UnexpectedGravityValue,
+}
 
-fn tilt_list() -> String {
+#[derive(Deserialize)]
+struct RawTilt {
+    _t: u8,
+    _l: u8,
+    name: uuid::Bytes,
+    major: u16,
+    minor: u16,
+    _u: u8,
+}
+
+impl TryFrom<&HashMap<u16, Vec<u8>>> for RawTilt {
+    type Error = Error;
+
+    fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Error> {
+        bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .allow_trailing_bytes()
+            .with_big_endian()
+            .deserialize::<RawTilt>(&ibeacon(manufacturer_data)?[..])
+            .map_err(|_| Error::NotATilt)
+    }
+}
+
+impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
+    type Error = Error;
+
+    fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Error> {
+        let raw = RawTilt::try_from(manufacturer_data)?;
+
+        let name = known_tilt_name(raw.name)?;
+
+        let temp = (raw.major as f32 - 32.0) / 1.8;
+        if !(0.0..100.0).contains(&temp) {
+            return Err(Error::UnexpectedTempValue);
+        }
+
+        let gravity = (raw.minor as f32) / 1000.0;
+        if !(0.9..1.1).contains(&gravity) {
+            return Err(Error::UnexpectedGravityValue);
+        }
+
+        Ok(Tilt {
+            name,
+            temp,
+            gravity,
+        })
+    }
+}
+
+// TODO simple but ugly
+fn tilt_uuids() -> HashMap<Uuid, String> {
     "a495bb10c5b14b44b5121370f02d74de,Red
 a495bb20c5b14b44b5121370f02d74de,Green
 a495bb30c5b14b44b5121370f02d74de,Black
@@ -22,11 +82,7 @@ a495bb50c5b14b44b5121370f02d74de,Orange
 a495bb60c5b14b44b5121370f02d74de,Blue
 a495bb70c5b14b44b5121370f02d74de,Yellow
 a495bb80c5b14b44b5121370f02d74de,Pink"
-        .to_string()
-}
-
-fn tilt_uuids(s: &str) -> HashMap<Uuid, String> {
-    s.lines()
+        .lines()
         .map(|l| l.split(','))
         .fold(HashMap::new(), |mut hm, mut l| {
             hm.entry(l.next().unwrap().parse().unwrap())
@@ -35,23 +91,19 @@ fn tilt_uuids(s: &str) -> HashMap<Uuid, String> {
         })
 }
 
-fn tilt_name(data: &[u8]) -> Result<String, NotATilt> {
-    Ok(tilt_uuids(&tilt_list())
-        .get(&Uuid::from_bytes(data.try_into().expect("len: 16")))
-        .ok_or(NotATilt)?
+fn known_tilt_name(data: uuid::Bytes) -> Result<String, Error> {
+    Ok(tilt_uuids()
+        .get(&Uuid::from_bytes(data))
+        .ok_or(Error::NotATilt)?
         .to_owned())
 }
 
-impl TryFrom<&[u8; 25]> for Tilt {
-    type Error = NotATilt;
-
-    fn try_from(data: &[u8; 25]) -> Result<Self, Self::Error> {
-        let read = |data: &[u8]| u16::from_be_bytes(data.try_into().expect("len: 2")) as f32;
-        Ok(Tilt {
-            name: tilt_name(&data[4..20])?,
-            temp: (read(&data[20..22]) - 32.0) / 1.8,
-            gravity: read(&data[22..24]) / 1000.0,
-        })
+fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, Error> {
+    match d.get(&76).map(|v| v.to_owned()).ok_or(Error::NotIbeacon) {
+        Ok(v) if v.len() != 23 => Err(Error::NotIbeacon),
+        Ok(v) if v[1] != 21 => Err(Error::NotIbeacon),
+        Ok(v) => Ok(v),
+        _ => Err(Error::NotIbeacon),
     }
 }
 
@@ -59,21 +111,117 @@ impl TryFrom<&[u8; 25]> for Tilt {
 mod tests {
     use super::*;
 
-    fn pink_bytes() -> [u8; 25] {
-        [
-            76, 0, 2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
-            222, 0, 67, 4, 4, 34,
-        ]
+    macro_rules! assert_err {
+        ($expression:expr, $($pattern:tt)+) => {
+            match $expression {
+                $($pattern)+ => (),
+                ref e => panic!("expected `{}` but got `{:?}`", stringify!($($pattern)+), e),
+            }
+        }
     }
 
     #[test]
-    fn into_tilt() {
-        assert!(Tilt::try_from(&pink_bytes()).is_ok());
+    fn not_ibeacon() {
+        let tilt = Tilt::try_from(&[(77, vec![])].iter().cloned().collect());
+        assert_err!(tilt, Err(Error::NotIbeacon));
+
+        let tilt = Tilt::try_from(&[(76, vec![])].iter().cloned().collect());
+        assert_err!(tilt, Err(Error::NotIbeacon));
+
+        let tilt = Tilt::try_from(&[(76, vec![0; 23])].iter().cloned().collect());
+        assert_err!(tilt, Err(Error::NotIbeacon));
     }
 
     #[test]
-    fn values() {
-        let tilt = Tilt::try_from(&pink_bytes()).unwrap();
+    fn unknown_uuid() {
+        let tilt = Tilt::try_from(&[(76, vec![21; 23])].iter().cloned().collect());
+        assert_err!(tilt, Err(Error::NotATilt));
+    }
+
+    #[test]
+    fn bad_temp_100() {
+        let tilt = Tilt::try_from(
+            &[(
+                76,
+                vec![
+                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
+                    222, 0, 212, 4, 4, 34,
+                ],
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+        );
+        assert_err!(tilt, Err(Error::UnexpectedTempValue));
+    }
+
+    #[test]
+    fn bad_temp_0() {
+        let tilt = Tilt::try_from(
+            &[(
+                76,
+                vec![
+                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
+                    222, 0, 31, 4, 4, 34,
+                ],
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+        );
+        assert_err!(tilt, Err(Error::UnexpectedTempValue));
+    }
+
+    #[test]
+    fn bad_g_08() {
+        let tilt = Tilt::try_from(
+            &[(
+                76,
+                vec![
+                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
+                    222, 0, 67, 3, 32, 34,
+                ],
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+        );
+        assert_err!(tilt, Err(Error::UnexpectedGravityValue));
+    }
+
+    #[test]
+    fn bad_g_12() {
+        let tilt = Tilt::try_from(
+            &[(
+                76,
+                vec![
+                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
+                    222, 0, 67, 4, 176, 34,
+                ],
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+        );
+        assert_err!(tilt, Err(Error::UnexpectedGravityValue));
+    }
+
+    #[test]
+    fn happy() {
+        let tilt = Tilt::try_from(
+            &[(
+                76,
+                vec![
+                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240, 45, 116,
+                    222, 0, 67, 4, 4, 34,
+                ],
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+        )
+        .expect("Valid sample");
+
         assert_eq!(tilt.name, "Pink");
         assert_eq!(tilt.gravity, 1.028);
         assert!(f32::abs(tilt.temp - 19.4) < 0.1);
