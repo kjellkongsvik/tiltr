@@ -2,7 +2,7 @@
 name = "tiltr"
 version = "0.2.0"
 authors = ["Kjell W. Kongsvik <kjell.kongsvik@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 btleplug = "0.8"
