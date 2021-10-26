@@ -64,11 +64,7 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
             return Err(Error::UnexpectedGravityValue);
         }
 
-        Ok(Tilt {
-            name,
-            temp,
-            gravity,
-        })
+        Ok(Tilt { name, gravity, temp })
     }
 }
 
