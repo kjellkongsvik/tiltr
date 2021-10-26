@@ -91,7 +91,7 @@ fn known_tilt_name(data: uuid::Bytes) -> Result<String, Error> {
     Ok(tilt_uuids()
         .get(&Uuid::from_bytes(data))
         .ok_or(Error::NotATilt)?
-        .to_owned())
+        .clone())
 }
 
 fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, Error> {
