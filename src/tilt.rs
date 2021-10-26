@@ -54,12 +54,12 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
 
         let name = known_tilt_name(raw.name)?;
 
-        let temp = (raw.major as f32 - 32.0) / 1.8;
+        let temp = (f32::from(raw.major) - 32.0) / 1.8;
         if !(0.0..100.0).contains(&temp) {
             return Err(Error::UnexpectedTempValue);
         }
 
-        let gravity = (raw.minor as f32) / 1000.0;
+        let gravity = f32::from(raw.minor) / 1000.0;
         if !(0.9..1.1).contains(&gravity) {
             return Err(Error::UnexpectedGravityValue);
         }
