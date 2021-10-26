@@ -95,7 +95,7 @@ fn known_tilt_name(data: uuid::Bytes) -> Result<String, Error> {
 }
 
 fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, Error> {
-    match d.get(&76).map(|v| v.to_owned()).ok_or(Error::NotIbeacon) {
+    match d.get(&76).cloned().ok_or(Error::NotIbeacon) {
         Ok(v) if v.len() != 23 => Err(Error::NotIbeacon),
         Ok(v) if v[1] != 21 => Err(Error::NotIbeacon),
         Ok(v) => Ok(v),
