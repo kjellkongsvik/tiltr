@@ -7,22 +7,14 @@ use tilt::Tilt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let args = clap::App::new("tiltr")
+    let args = clap::Command::new("tiltr")
         .version(clap::crate_version!())
-        .arg(
-            clap::Arg::with_name("calibrate_g")
-                .short("c")
-                .default_value("0"),
-        )
-        .arg(
-            clap::Arg::with_name("timeout")
-                .short("t")
-                .default_value("1"),
-        )
+        .arg(clap::Arg::new("calibrate_g").short('c').default_value("0"))
+        .arg(clap::Arg::new("timeout").short('t').default_value("1"))
         .get_matches();
 
-    let calibrate_g = clap::value_t!(args.value_of("calibrate_g"), f32)?;
-    let timeout = clap::value_t!(args.value_of("timeout"), u64)?;
+    let calibrate_g = args.value_of_t("calibrate_g")?;
+    let timeout = args.value_of_t("timeout")?;
 
     println!("{}", scan_tilt(calibrate_g, timeout).await?);
 
