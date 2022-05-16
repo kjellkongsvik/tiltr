@@ -1,6 +1,6 @@
 use std::error::Error;
 mod tilt;
-use btleplug::api::{Central, Manager as _, Peripheral as _};
+use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager};
 use std::convert::TryFrom;
 use tilt::Tilt;
@@ -21,9 +21,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn search(adapter: &Adapter) -> Result<Tilt, TiltError> {
+async fn search(central: &Adapter) -> Result<Tilt, TiltError> {
     loop {
-        for p in adapter.peripherals().await? {
+        for p in central.peripherals().await? {
             if let Some(k) = p.properties().await? {
                 if let Ok(tilt) = Tilt::try_from(&k.manufacturer_data) {
                     return Ok(tilt);
@@ -34,18 +34,18 @@ async fn search(adapter: &Adapter) -> Result<Tilt, TiltError> {
 }
 
 async fn scan_tilt(calibrate_g: f32, timeout: u64) -> Result<String, TiltError> {
-    let adapter = Manager::new()
+    let central = Manager::new()
         .await?
         .adapters()
         .await?
         .into_iter()
         .next()
         .ok_or(TiltError::MissingAdapter)?;
-    adapter.start_scan().await?;
+    central.start_scan(ScanFilter::default()).await?;
 
     let tilt = match tokio::time::timeout(
         std::time::Duration::from_secs(timeout),
-        search(&adapter),
+        search(&central),
     )
     .await
     {
@@ -55,7 +55,7 @@ async fn scan_tilt(calibrate_g: f32, timeout: u64) -> Result<String, TiltError> 
         }
         _ => Err(TiltError::TiltNotFound),
     };
-    adapter.stop_scan().await?;
+    central.stop_scan().await?;
     tilt
 }
 
