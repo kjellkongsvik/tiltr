@@ -14,7 +14,7 @@ pub struct Tilt {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Not an ibeacon device")]
-    NotIbeacon,
+    NotAnIbeacon,
     #[error("Not a tilt")]
     NotATilt,
     #[error("Unexpected temp value")]
@@ -41,8 +41,8 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for IBeacon {
             .with_fixint_encoding()
             .allow_trailing_bytes()
             .with_big_endian()
-            .deserialize(&manufacturer_data.get(&0x4c).ok_or(Error::NotIbeacon)?[..])
-            .map_err(|_| Error::NotIbeacon)
+            .deserialize(&manufacturer_data.get(&0x4c).ok_or(Error::NotAnIbeacon)?[..])
+            .map_err(|_| Error::NotAnIbeacon)
     }
 }
 
@@ -112,13 +112,13 @@ mod tests {
     #[test]
     fn not_ibeacon() {
         let tilt = Tilt::try_from(&[(77, vec![])].iter().cloned().collect());
-        assert_err!(tilt, Err(Error::NotIbeacon));
+        assert_err!(tilt, Err(Error::NotAnIbeacon));
 
         let tilt = Tilt::try_from(&[(76, vec![])].iter().cloned().collect());
-        assert_err!(tilt, Err(Error::NotIbeacon));
+        assert_err!(tilt, Err(Error::NotAnIbeacon));
 
         let tilt = Tilt::try_from(&[(76, vec![0; 23])].iter().cloned().collect());
-        assert_err!(tilt, Err(Error::NotIbeacon));
+        assert_err!(tilt, Err(Error::NotAnIbeacon));
     }
 
     #[test]
