@@ -24,7 +24,7 @@ pub enum Error {
 }
 
 #[derive(Deserialize)]
-struct RawTilt {
+struct IBeacon {
     _t: u8,
     _l: u8,
     name: uuid::Bytes,
@@ -33,7 +33,7 @@ struct RawTilt {
     _u: u8,
 }
 
-impl TryFrom<&HashMap<u16, Vec<u8>>> for RawTilt {
+impl TryFrom<&HashMap<u16, Vec<u8>>> for IBeacon {
     type Error = Error;
 
     fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Error> {
@@ -41,8 +41,8 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for RawTilt {
             .with_fixint_encoding()
             .allow_trailing_bytes()
             .with_big_endian()
-            .deserialize::<RawTilt>(&ibeacon(manufacturer_data)?[..])
-            .map_err(|_| Error::NotATilt)
+            .deserialize(&manufacturer_data.get(&0x4c).ok_or(Error::NotIbeacon)?[..])
+            .map_err(|_| Error::NotIbeacon)
     }
 }
 
@@ -50,30 +50,28 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
     type Error = Error;
 
     fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Error> {
-        let raw = RawTilt::try_from(manufacturer_data)?;
+        let ibeacon = IBeacon::try_from(manufacturer_data)?;
 
-        let name = known_tilt_name(raw.name)?;
-
-        let temp = (f32::from(raw.major) - 32.0) / 1.8;
-        if !(0.0..100.0).contains(&temp) {
+        let temp_celsius = (f32::from(ibeacon.major) - 32.0) / 1.8;
+        if !(0.0..100.0).contains(&temp_celsius) {
             return Err(Error::UnexpectedTempValue);
         }
 
-        let gravity = f32::from(raw.minor) / 1000.0;
+        let gravity = f32::from(ibeacon.minor) / 1000.0;
         if !(0.9..1.1).contains(&gravity) {
             return Err(Error::UnexpectedGravityValue);
         }
 
         Ok(Tilt {
-            name,
+            name: known_tilt_name(ibeacon.name)?,
             gravity,
-            temp,
+            temp: temp_celsius,
         })
     }
 }
 
 // TODO simple but ugly
-fn tilt_uuids() -> HashMap<Uuid, String> {
+pub fn tilt_uuids() -> HashMap<Uuid, String> {
     "a495bb10c5b14b44b5121370f02d74de,Red
 a495bb20c5b14b44b5121370f02d74de,Green
 a495bb30c5b14b44b5121370f02d74de,Black
@@ -96,15 +94,6 @@ fn known_tilt_name(data: uuid::Bytes) -> Result<String, Error> {
         .get(&Uuid::from_bytes(data))
         .ok_or(Error::NotATilt)?
         .clone())
-}
-
-fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, Error> {
-    match d.get(&0x4c).cloned().ok_or(Error::NotIbeacon) {
-        Ok(v) if v.len() != 23 => Err(Error::NotIbeacon),
-        Ok(v) if v[1] != 21 => Err(Error::NotIbeacon),
-        Ok(v) => Ok(v),
-        _ => Err(Error::NotIbeacon),
-    }
 }
 
 #[cfg(test)]
