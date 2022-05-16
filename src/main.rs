@@ -41,7 +41,11 @@ async fn scan_tilt(calibrate_g: f32, timeout: u64) -> Result<String, TiltError> 
         .into_iter()
         .next()
         .ok_or(TiltError::MissingAdapter)?;
-    central.start_scan(ScanFilter::default()).await?;
+    central
+        .start_scan(ScanFilter {
+            services: tilt::tilt_uuids().into_keys().collect(),
+        })
+        .await?;
 
     let tilt = match tokio::time::timeout(
         std::time::Duration::from_secs(timeout),
