@@ -1,35 +1,42 @@
+use futures::StreamExt;
 mod tilt;
-use btleplug::api::{Central, Manager as _, Peripheral as _};
-use btleplug::platform::Manager;
-use std::convert::TryFrom;
+
+// 76 is required Apple iBeacon manufacturer Id
+const MANUFACTURER_ID: u16 = 76;
 
 #[tokio::main]
-async fn main() -> btleplug::Result<()> {
-    let mut calibrate_g: f32 = 0.0;
+async fn main() -> bluer::Result<()> {
+    let mut calibrate_g = 0.0;
     if let Some(g) = std::env::args().nth(1) {
-        calibrate_g = g.parse().unwrap();
+        calibrate_g = g.parse::<f32>().unwrap();
     }
+    let adapter = bluer::Session::new().await?.default_adapter().await?;
+    adapter.set_powered(true).await?;
+    let filter = bluer::DiscoveryFilter {
+        transport: bluer::DiscoveryTransport::Le,
+        ..Default::default()
+    };
+    adapter.set_discovery_filter(filter).await?;
 
-    let adapter = Manager::new()
-        .await?
-        .adapters()
-        .await?
-        .into_iter()
-        .next()
-        .unwrap();
-    adapter.start_scan().await?;
-
+    let mut device_events = adapter.discover_devices().await?;
     loop {
-        for p in adapter.peripherals().await? {
-            if let Some(k) = p.properties().await? {
-                if let Ok(mut t) = tilt::Tilt::try_from(&k.manufacturer_data) {
-                    t.gravity += calibrate_g;
-                    adapter.stop_scan().await?;
-                    println!("{}", serde_json::to_string(&t).unwrap());
-
-                    return Ok(());
+        tokio::select! {
+            Some(bluer::AdapterEvent::DeviceAdded(addr) ) = device_events.next() => {
+                if let Some(manufacturer_data) = adapter.device(addr)?.manufacturer_data().await?
+                    && let Some(ibeacon_bytes) = manufacturer_data.get(&MANUFACTURER_ID) {
+                    if let Ok(t) = tilt::Tilt::try_from(ibeacon_bytes) {
+                        let gravity = t.gravity + calibrate_g;
+                        println!(
+                            "{{\"name\": \"{}\", \"gravity\": {}, \"temp\": {}}}",
+                            t.name, gravity, t.temp
+                        );
+                        break;
+                    }
                 }
-            }
+            },
+            else => ()
         }
     }
+
+    Ok(())
 }
