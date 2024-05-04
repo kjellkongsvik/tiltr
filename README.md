@@ -1,4 +1,4 @@
-Listen for a tilt sample.
+# Listen for a tilt sample.
 
 Might be used to send data to brewfather:
 ```bash

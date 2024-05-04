@@ -1,67 +1,49 @@
-use bincode::Options;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use uuid::Uuid;
 
-#[derive(Serialize, Debug)]
+type Bytes = [u8; 16];
+type IBeacon = (u8, u8, Bytes, u16, u16, u8);
+
+#[derive(Debug, PartialEq)]
 pub struct Tilt {
     pub name: String,
     pub gravity: f32,
     pub temp: f32,
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Not an ibeacon device")]
-    NotIbeacon,
-    #[error("Not a tilt")]
-    NotATilt,
+#[derive(Debug, thiserror::Error, PartialEq)]
+pub enum TiltError {
+    #[error("Not IBeacon")]
+    NotIBeacon,
+    #[error("Not tilt")]
+    NotTilt,
     #[error("Unexpected temp value")]
     UnexpectedTempValue,
     #[error("Unexpected gravity value")]
     UnexpectedGravityValue,
 }
 
-#[derive(Deserialize)]
-struct RawTilt {
-    _t: u8,
-    _l: u8,
-    name: uuid::Bytes,
-    major: u16,
-    minor: u16,
-    _u: u8,
-}
+impl TryFrom<&Vec<u8>> for Tilt {
+    type Error = TiltError;
 
-impl TryFrom<&HashMap<u16, Vec<u8>>> for RawTilt {
-    type Error = Error;
-
-    fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Error> {
-        bincode::DefaultOptions::new()
-            .with_fixint_encoding()
-            .allow_trailing_bytes()
-            .with_big_endian()
-            .deserialize::<RawTilt>(&ibeacon(manufacturer_data)?[..])
-            .map_err(|_| Error::NotATilt)
-    }
-}
-
-impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
-    type Error = Error;
-
-    fn try_from(manufacturer_data: &HashMap<u16, Vec<u8>>) -> Result<Self, Error> {
-        let raw = RawTilt::try_from(manufacturer_data)?;
-
-        let name = known_tilt_name(raw.name)?;
-
-        let temp = (f32::from(raw.major) - 32.0) / 1.8;
+    fn try_from(data: &Vec<u8>) -> Result<Self, TiltError> {
+        if data.len() != 23 {
+            return Err(TiltError::NotIBeacon);
+        }
+        let config = bincode::config::standard()
+            .with_fixed_int_encoding()
+            .with_big_endian();
+        let (ibeacon, _): (IBeacon, _) = bincode::decode_from_slice(data, config)
+            .map_err(|_| TiltError::NotIBeacon)?;
+        let name = my_tilts().get(&ibeacon.2).ok_or(TiltError::NotTilt)?.into();
+        let temp = (f32::from(ibeacon.3) - 32.0) / 1.8;
         if !(0.0..100.0).contains(&temp) {
-            return Err(Error::UnexpectedTempValue);
+            return Err(TiltError::UnexpectedTempValue);
         }
 
-        let gravity = f32::from(raw.minor) / 1000.0;
+        let gravity = f32::from(ibeacon.4) / 1000.0;
         if !(0.9..1.1).contains(&gravity) {
-            return Err(Error::UnexpectedGravityValue);
+            return Err(TiltError::UnexpectedGravityValue);
         }
 
         Ok(Tilt {
@@ -72,155 +54,92 @@ impl TryFrom<&HashMap<u16, Vec<u8>>> for Tilt {
     }
 }
 
-// TODO simple but ugly
-fn tilt_uuids() -> HashMap<Uuid, String> {
-    "a495bb10c5b14b44b5121370f02d74de,Red
-a495bb20c5b14b44b5121370f02d74de,Green
-a495bb30c5b14b44b5121370f02d74de,Black
-a495bb40c5b14b44b5121370f02d74de,Purple
-a495bb50c5b14b44b5121370f02d74de,Orange
-a495bb60c5b14b44b5121370f02d74de,Blue
-a495bb70c5b14b44b5121370f02d74de,Yellow
-a495bb80c5b14b44b5121370f02d74de,Pink"
-        .lines()
-        .map(|l| l.split(','))
-        .fold(HashMap::new(), |mut hm, mut l| {
-            hm.entry(l.next().unwrap().parse().unwrap())
-                .or_insert_with(|| l.next().unwrap().to_string());
-            hm
-        })
+fn my_tilts() -> HashMap<Bytes, String> {
+    let mut tilts = HashMap::new();
+
+    let mut add_tilt = |id: Bytes, name: &str| tilts.insert(id, name.into());
+
+    add_tilt(pink(), "Pink");
+
+    tilts
 }
 
-fn known_tilt_name(data: uuid::Bytes) -> Result<String, Error> {
-    Ok(tilt_uuids()
-        .get(&Uuid::from_bytes(data))
-        .ok_or(Error::NotATilt)?
-        .clone())
-}
-
-fn ibeacon(d: &HashMap<u16, Vec<u8>>) -> Result<Vec<u8>, Error> {
-    match d.get(&76).cloned().ok_or(Error::NotIbeacon) {
-        Ok(v) if v.len() != 23 => Err(Error::NotIbeacon),
-        Ok(v) if v[1] != 21 => Err(Error::NotIbeacon),
-        Ok(v) => Ok(v),
-        _ => Err(Error::NotIbeacon),
-    }
+fn pink() -> Bytes {
+    u128::from_str_radix("a495bb80c5b14b44b5121370f02d74de", 16)
+        .unwrap()
+        .to_be_bytes()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    macro_rules! assert_err {
-        ($expression:expr, $($pattern:tt)+) => {
-            match $expression {
-                $($pattern)+ => (),
-                ref e => panic!("expected `{}` but got `{:?}`", stringify!($($pattern)+), e),
-            }
-        }
-    }
-
-    #[test]
-    fn not_ibeacon() {
-        let tilt = Tilt::try_from(&[(77, vec![])].iter().cloned().collect());
-        assert_err!(tilt, Err(Error::NotIbeacon));
-
-        let tilt = Tilt::try_from(&[(76, vec![])].iter().cloned().collect());
-        assert_err!(tilt, Err(Error::NotIbeacon));
-
-        let tilt = Tilt::try_from(&[(76, vec![0; 23])].iter().cloned().collect());
-        assert_err!(tilt, Err(Error::NotIbeacon));
-    }
-
-    #[test]
-    fn unknown_uuid() {
-        let tilt = Tilt::try_from(&[(76, vec![21; 23])].iter().cloned().collect());
-        assert_err!(tilt, Err(Error::NotATilt));
+    fn unknown() -> Bytes {
+        u128::from_str_radix("00000000000000000000000000000000", 16)
+            .unwrap()
+            .to_be_bytes()
     }
 
     #[test]
     fn bad_temp_100() {
-        let tilt = Tilt::try_from(
-            &[(
-                76,
-                vec![
-                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240,
-                    45, 116, 222, 0, 212, 4, 4, 34,
-                ],
-            )]
-            .iter()
-            .cloned()
-            .collect(),
-        );
-        assert_err!(tilt, Err(Error::UnexpectedTempValue));
+        let mut bytes = vec![0, 0];
+        bytes.extend(pink());
+        bytes.extend([0, 212, 4, 4, 34]);
+        let tilt = Tilt::try_from(&bytes);
+        assert_eq!(tilt, Err(TiltError::UnexpectedTempValue));
     }
 
     #[test]
     fn bad_temp_0() {
-        let tilt = Tilt::try_from(
-            &[(
-                76,
-                vec![
-                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240,
-                    45, 116, 222, 0, 31, 4, 4, 34,
-                ],
-            )]
-            .iter()
-            .cloned()
-            .collect(),
-        );
-        assert_err!(tilt, Err(Error::UnexpectedTempValue));
+        let mut bytes = vec![0, 0];
+        bytes.extend(pink());
+        bytes.extend([0, 31, 4, 4, 34]);
+        let tilt = Tilt::try_from(&bytes);
+        assert_eq!(tilt, Err(TiltError::UnexpectedTempValue));
     }
 
     #[test]
     fn bad_g_08() {
-        let tilt = Tilt::try_from(
-            &[(
-                76,
-                vec![
-                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240,
-                    45, 116, 222, 0, 67, 3, 32, 34,
-                ],
-            )]
-            .iter()
-            .cloned()
-            .collect(),
-        );
-        assert_err!(tilt, Err(Error::UnexpectedGravityValue));
+        let mut bytes = vec![0, 0];
+        bytes.extend(pink());
+        bytes.extend([0, 67, 3, 32, 34]);
+        let tilt = Tilt::try_from(&bytes);
+        assert_eq!(tilt, Err(TiltError::UnexpectedGravityValue));
     }
 
     #[test]
     fn bad_g_12() {
-        let tilt = Tilt::try_from(
-            &[(
-                76,
-                vec![
-                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240,
-                    45, 116, 222, 0, 67, 4, 176, 34,
-                ],
-            )]
-            .iter()
-            .cloned()
-            .collect(),
-        );
-        assert_err!(tilt, Err(Error::UnexpectedGravityValue));
+        let mut bytes = vec![0, 0];
+        bytes.extend(pink());
+        bytes.extend([0, 67, 4, 176, 34]);
+        let tilt = Tilt::try_from(&bytes);
+        assert_eq!(tilt, Err(TiltError::UnexpectedGravityValue));
+    }
+
+    #[test]
+    fn not_ibeacon() {
+        let bytes = vec![0];
+        let tilt = Tilt::try_from(&bytes);
+
+        assert_eq!(tilt, Err(TiltError::NotIBeacon));
+    }
+
+    #[test]
+    fn not_tilt() {
+        let mut bytes = vec![0, 0];
+        bytes.extend(unknown());
+        bytes.extend([0, 0, 0, 0, 0]);
+        let tilt = Tilt::try_from(&bytes);
+
+        assert_eq!(tilt, Err(TiltError::NotTilt));
     }
 
     #[test]
     fn happy() {
-        let tilt = Tilt::try_from(
-            &[(
-                76,
-                vec![
-                    2, 21, 164, 149, 187, 128, 197, 177, 75, 68, 181, 18, 19, 112, 240,
-                    45, 116, 222, 0, 67, 4, 4, 34,
-                ],
-            )]
-            .iter()
-            .cloned()
-            .collect(),
-        )
-        .expect("Valid sample");
+        let mut bytes = vec![0, 0];
+        bytes.extend(pink());
+        bytes.extend([0, 67, 4, 4, 0]);
+        let tilt = Tilt::try_from(&bytes).expect("Valid tilt");
 
         assert_eq!(tilt.name, "Pink");
         assert_eq!(tilt.gravity, 1.028);
